@@ -115,13 +115,13 @@ def getOffers():
     if deducted_category == 0:
         similarity_list = getTopSortedSimilarityMatches(input_text, unique_retailers)
         log_list.append(f'Similarity matches with retailers: {similarity_list}')
-        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.9 or similarity_list[0]['fuzzy_score'] > 0.75):
-            offer_list = listToJson(list(df_offer_retailer[df_offer_retailer['RETAILER'] == similarity_list[0]['concept']]['OFFER']))
+        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.4 or similarity_list[0]['fuzzy_score'] > 0.7):
+            offer_list = getTopSortedSimilarityMatches(input_text, list(df_offer_retailer[df_offer_retailer['RETAILER'] == similarity_list[0]['concept']]['OFFER']))
     elif deducted_category == 1:
         similarity_list = getTopSortedSimilarityMatches(input_text, unique_brands)
         log_list.append(f'Similarity matches with brands: {similarity_list}')
-        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.9 or similarity_list[0]['fuzzy_score'] > 0.75):
-            offer_list = listToJson(list(df_offer_retailer[df_offer_retailer['BRAND'] == similarity_list[0]['concept']]['OFFER']))
+        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.4 or similarity_list[0]['fuzzy_score'] > 0.7):
+            offer_list = getTopSortedSimilarityMatches(input_text, list(df_offer_retailer[df_offer_retailer['BRAND'] == similarity_list[0]['concept']]['OFFER']))
     else:
         lst_syn = [getTopSortedSimilarityMatches(word, unique_categories) for word in [input_text] + getSynonyms(input_text)]
         flat_list = [elem for sublist in lst_syn for elem in sublist]
