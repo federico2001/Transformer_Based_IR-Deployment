@@ -48,7 +48,7 @@ def tokenize(text):
     stemmer = PorterStemmer()
     return [stemmer.stem(t) for t in tokens]
 
-def getTopSortedSimilarityMatches(input_text, target_list):
+def getTopSortedSimilarityMatches(input_text, target_list, allow_zero = False):
     '''
     Returns the top sorted matches of the list with respect to the input text (TF-IDF -> cosine similarity) if similarity > 0,
     If no matches are found, it triew using 'fuzzy' matches to compensate for misspelling.
@@ -66,7 +66,7 @@ def getTopSortedSimilarityMatches(input_text, target_list):
     lst_resp = []
 
     for i, retailer in enumerate(sorted_retailers):
-        if sorted_similarities[i] > 0:
+        if sorted_similarities[i] > 0 or allow_zero:
             lst_resp.append({'concept': retailer, 'cosine_similarity': sorted_similarities[i], 'fuzzy_score' : 0})
     
     # If the list is empty, try using fuzzy matching as a fallback
