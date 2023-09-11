@@ -3,6 +3,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from flask import Flask, request, jsonify
 from fuzzywuzzy import fuzz, process
 from nltk.stem import PorterStemmer
+from pandas.api.types import isna
 from nltk.corpus import wordnet
 from textblob import TextBlob
 from flask_cors import CORS
@@ -92,61 +93,68 @@ def getCategory(text_input):
 
 @app.route('/get_offers', methods=['POST'])
 def getOffers():
+    # Get input from JSON request and log it
     content = request.json
     input_text = content['text']
-    log_list = [f'Input text recieved was "{input_text}"']
+    log_list = [f'Input text received was "{input_text}"']
 
+    # Categorize the input
     category_json = getCategory(input_text)
     deducted_category = category_json['prediction']
-    log_list.append(f'Input categorized by QueryTypeDetection : {category_json["prediction"]} with confidence: {category_json["confidence"]} (0=retail, 1=brand, 2=category)')
+    log_list.append(f'Input categorized by QueryTypeDetection: {deducted_category} with confidence: {category_json["confidence"]}')
 
+    # Load data from CSV files
     df_offer_retailer = pd.read_csv('data/offer_retailer.csv')
     df_cat = pd.read_csv('data/categories.csv')
-    df_brand_category = pd.read_csv('data/brand_category.csv')
 
-    unique_retailers = list(set([r['RETAILER'] for i, r in df_offer_retailer.iterrows() if not isNaN(r['RETAILER'])]))
-    unique_brands = list(set([r['BRAND'] for i, r in df_offer_retailer.iterrows() if (r['BRAND'] != r['RETAILER']) & (not isNaN(r['BRAND']))]))
-    unique_categories = list(set([r['PRODUCT_CATEGORY'] for i, r in df_cat.iterrows() if not isNaN(r['PRODUCT_CATEGORY'])]))
-    unique_categories += list(set([r['IS_CHILD_CATEGORY_TO'] for i, r in df_cat.iterrows() if not isNaN(r['IS_CHILD_CATEGORY_TO'])]))
-    unique_offers = list(set([r['OFFER'] for i, r in df_offer_retailer.iterrows() if not isNaN(r['OFFER'])]))
+    # Extract unique retailers, brands, categories, and offers
+    unique_retailers = df_offer_retailer['RETAILER'].dropna().unique().tolist()
+    unique_brands = df_offer_retailer.loc[df_offer_retailer['BRAND'] != df_offer_retailer['RETAILER'], 'BRAND'].dropna().unique().tolist()
+    unique_categories = df_cat['PRODUCT_CATEGORY'].dropna().unique().tolist() + df_cat['IS_CHILD_CATEGORY_TO'].dropna().unique().tolist()
+    unique_offers = df_offer_retailer['OFFER'].dropna().unique().tolist()
 
     offer_list = []
+
+    # Define a condition to filter out low similarity scores
+    def isHighSimilarity(item):
+        return item['cosine_similarity'] > 0.4 or item['fuzzy_score'] > 0.7
 
     if deducted_category == 0:
         similarity_list = getTopSortedSimilarityMatches(input_text, unique_retailers)
         log_list.append(f'Similarity matches with retailers: {similarity_list}')
-        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.4 or similarity_list[0]['fuzzy_score'] > 0.7):
-            offer_list = getTopSortedSimilarityMatches(input_text, list(df_offer_retailer[df_offer_retailer['RETAILER'] == similarity_list[0]['concept']]['OFFER']))
+        if similarity_list and isHighSimilarity(similarity_list[0]):
+            top_retailer = similarity_list[0]['concept']
+            offer_list = getTopSortedSimilarityMatches(input_text, df_offer_retailer[df_offer_retailer['RETAILER'] == top_retailer]['OFFER'].tolist(), True)
+
     elif deducted_category == 1:
         similarity_list = getTopSortedSimilarityMatches(input_text, unique_brands)
         log_list.append(f'Similarity matches with brands: {similarity_list}')
-        if len(similarity_list) > 0 and (similarity_list[0]['cosine_similarity'] > 0.4 or similarity_list[0]['fuzzy_score'] > 0.7):
-            offer_list = getTopSortedSimilarityMatches(input_text, list(df_offer_retailer[df_offer_retailer['BRAND'] == similarity_list[0]['concept']]['OFFER']))
+        if similarity_list and isHighSimilarity(similarity_list[0]):
+            top_brand = similarity_list[0]['concept']
+            offer_list = getTopSortedSimilarityMatches(input_text, df_offer_retailer[df_offer_retailer['BRAND'] == top_brand]['OFFER'].tolist(), True)
+
     else:
-        lst_syn = [getTopSortedSimilarityMatches(word, unique_categories) for word in [input_text] + getSynonyms(input_text)]
-        flat_list = [elem for sublist in lst_syn for elem in sublist]
-		# Remove duplicates
+        words = [input_text] + getSynonyms(input_text)
+        similarity_list = [getTopSortedSimilarityMatches(word, unique_categories) for word in words]
+        similarity_list = [item for sublist in similarity_list for item in sublist]
+
+        # Remove duplicates by keeping the highest similarity score for each concept
         max_similarity_dict = {}
-        for item in flat_list:
-            concept = item['concept']
-            similarity = item['cosine_similarity']
-            if concept not in max_similarity_dict or similarity > max_similarity_dict[concept]['cosine_similarity']:
-                max_similarity_dict[concept] = item
-		
-		# Convert the dictionary values to a list to get the final, deduplicated list
-        similarity_list = list(max_similarity_dict.values())
-        similarity_list = [item for item in similarity_list if item['cosine_similarity'] > 0 or item['fuzzy_score'] > 0.85]
-        similarity_list = sorted(similarity_list, key=lambda x: x['cosine_similarity'], reverse=True)
+        for item in similarity_list:
+            concept, similarity = item['concept'], item['cosine_similarity']
+            max_similarity_dict.setdefault(concept, item).update(cosine_similarity=max(similarity, max_similarity_dict.get(concept, {}).get('cosine_similarity', 0)))
+
+        similarity_list = sorted(max_similarity_dict.values(), key=lambda x: x['cosine_similarity'], reverse=True)
         log_list.append(f'Similarity matches with categories: {similarity_list}')
 
-		# Get the offer list comparing directly to offers
-        offer_list = [getTopSortedSimilarityMatches(word, unique_offers) for word in [input_text] + getSynonyms(input_text)]
-        offer_list = [elem for sublist in offer_list for elem in sublist]
+        offer_list = [getTopSortedSimilarityMatches(word, unique_offers) for word in words]
+        offer_list = [item for sublist in offer_list for item in sublist]
         offer_list = sorted(offer_list, key=lambda x: x['cosine_similarity'], reverse=True)
 
     # Prepare response
-    response = {'offer_list':offer_list, 'LOG_LIST':log_list}
+    response = {'offer_list': offer_list, 'LOG_LIST': log_list}
     return jsonify(response)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
