@@ -3,7 +3,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from flask import Flask, request, jsonify
 from fuzzywuzzy import fuzz, process
 from nltk.stem import PorterStemmer
-from pandas.api.types import isna
 from nltk.corpus import wordnet
 from textblob import TextBlob
 from flask_cors import CORS
