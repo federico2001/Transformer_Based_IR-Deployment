@@ -1,6 +1,6 @@
 # Transformer Based IR-Deployment
 ### Context
-This platform recieves a text as input and returns a list of offers that are more relevant to that text performing an Information Retrieval algorithm that incudes a multi class text classification transformer based model, TF-IDF, cosine similarity, stemming and lemmatization, "fuzzy" similarity and  data augmentation through synonym generation.
+This platform recieves a text as input and returns a list of offers that are more relevant to that text performing an Information Retrieval algorithm that incudes a multi class text classification transformer based model, TF-IDF, cosine similarity, stemming and lemmatization, "fuzzy" similarity and  data augmentation through synonym generation. The response also includes the 'cosine_similarity' and 'fuzzy_score' of each offer, along with a 'LOG_LIST' list of actions performed by the platform.
 
 ### Example:
 input : {"text" : "sams club membership"} <br>
